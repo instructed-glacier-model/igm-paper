@@ -483,7 +483,7 @@ Note that the inverse modelling is designed to infer initial distributed sliding
  
 \section{Implementation and usage of IGM}
 
-IGM is implemented in a Python package, which can be installed using pip directly from the source: \url{https://github.com/instructed-glacier-model/igm} or from PyPi:
+IGM is implemented in a Python package, which can be installed using pip directly from the source (\url{https://github.com/instructed-glacier-model/igm}) or from PyPi:
 \begin{lstlisting}[language=bash,frame=single,numbers=none]
 pip install igm-model
 \end{lstlisting}
@@ -511,14 +511,14 @@ The folder organization of IGM experiments is as follows:
  
 defaults:
   - override /input: 
-      - load_ncdf
+      - local
   - override /modules: 
       - smb_simple
       - iceflow
       - time
       - thk
   - override /output: 
-      - write_ncdf
+      - local
 
 processes: 
   time:
@@ -532,8 +532,8 @@ processes:
 
 \begin{figure*}[!ht]
 \begin{center}
-\includegraphics[width=\textwidth]{fig/IGM-modules-flowchart.pdf}
-\caption{Flowchart of IGM modules. \textcolor{red}{[TODO: UPDATE]}}
+\includegraphics[width=\textwidth]{fig/flowchat-module.png}
+\caption{Flowchart of IGM modules. }
 \label{flowchart}
 \end{center}
 \end{figure*}
@@ -542,15 +542,20 @@ In the following sections, we give a brief description of the most important IGM
 
 \subsection{Inputs modules}
 
-IGM comes with input modules that can read raster data from files (\texttt{load\_ncdf},  \texttt{load\_tif}, \texttt{local}), or collect them from a database (\texttt{oggm\_shop}).
+IGM comes with input modules that can collect them from a database (\texttt{oggm\_shop}) and/or read raster data from files (\texttt{local}), 
 
-\textcolor{red}{[TODO: give local the functionalities of loadncdf and loadtif]} Modules \texttt{load\_ncdf}, \texttt{load\_tif}, \texttt{local} were built to load spatial 2D raster data from a NetCDF or Tiff file in IGM. The module is expected to import at least the basal topography, which is represented by variable \texttt{topg}, but can provide other fields such as the initial ice thickness \texttt{thk} and more. IGM has naming convention that must be followed to be recognized. Any field present in the NetCDF file will be passed and be available in IGM. At this stage, raster data can be resampled, coarsened or cropped to a specific regions.
+Module \texttt{local} were built to load spatial 2D raster data from a NetCDF or Tiff file in IGM. The module is expected to import at least the basal topography, which is represented by variable \texttt{topg}, but can provide other fields such as the initial ice thickness \texttt{thk} and more. IGM has naming convention that must be followed to be recognized. Any field present in the NetCDF file will be passed and be available in IGM. At this stage, raster data can be resampled, coarsened or cropped to a specific regions.
 
-Module \texttt{oggm\_shop} utilizes the Open Glacier Global Model \citep[OGGM][]{maussion2019open} (and then depends on python package \texttt{oggm}) to acquire data for contemporary glaciers. Users provide the RGI ID of the glacier of interest(\url{https://www.glims.org/maps/glims}). The data provided by OGGM are either already processed for certain spatial resolution and margin size, otherwise can be re-processed on demand to obtain certain user-defined spatial resolutions and/or margin sizes. Upon running this module, its automatically downloads an ensemble of data related to the specified glacier, which is then stored in a folder named after the RGI ID in folder \texttt{data}. Users can select 2D gridded variables of interest from the available products of the \texttt{oggm\_shop} to be loaded in IGM.
+Module \texttt{oggm\_shop} utilizes the Open Glacier Global Model \citep[OGGM][]{maussion2019open} (and then depends on python package \texttt{oggm}) to acquire data for contemporary glaciers. Users provide the RGI ID of the glacier of interest(\url{https://www.glims.org/maps/glims}). The data provided by OGGM are either already processed for certain spatial resolution and margin size, otherwise can be re-processed on demand to obtain certain user-defined spatial resolutions and/or margin sizes. Upon running this module, its automatically downloads an ensemble of data related to the specified glacier, which is then stored in a folder named after the RGI ID in folder \texttt{data}. Users can select 2D gridded variables of interest from the available products of the \texttt{oggm\_shop} to be writen in a IGM-readable NetCDF file thanks to \texttt{local} module.
 
 \subsection{Processes modules}
 
 Processes modules implement update rules for all modelled variables within the time loop. Modules correspond to specific physical components. For instance, the \texttt{iceflow} module updates the ice velocity, the \texttt{thk} module updates the ice thickness, and so on. Processes modules are conveniently listed in order: for instance, \texttt{iceflow} must come before \texttt{thk} as the latter needs the first.
+
+\subsubsection{Data assimilation}
+\label{data_assimilation}
+
+This module permits to carry the data assimilation (or inverse modelling) while ensuring the consistence with the ice flow physics (Section \ref{inv_model}). It can be activated as a preliminary step to a forward or prognostic model run that assumes isothermal ice (i.e. without additional \texttt{enthalpy} module, since the the thermal condition are inferred from the inversion rather than computed from the enthalpy module). Running this module requires that necessary observational data have been loading in IGM using an inputs module such as ice surface ice velocities ${\bf u}^{s,obs}$, the top surface elevation $s^{obs}$, some ice thickness profiles $h_p^{obs}$, observed flux divergence $d^{obs}$, glacier mask from RGI outlines. A formerly-inferred ice thickness field \citep{farinotti2019consensus,millan2022ice} can be used to initialize the inverse model. All the observational data (including individual ice thickness profiles) are rasterized on the same grid, with possible no-data (NaN) values that are ignored in the optimization. While the optimization problem is presented in its most general form (Section \ref{inv_model}), the user selects a sub-ensemble of controls and constraints within the cost function based on the availability of data. Maintaining a balance between controls and costs/constraints is crucial to maintaining the well-posedness of the problem and guarding against multiple solutions. There are a couple parameters that need adjustement including i) confidence levels (i.e. tolerance to fit the data) $\sigma^u, \sigma^h, \sigma^s, \sigma^d$ or ii) regularization weights $\alpha^h, \alpha^c, \alpha^A$. The data assimilation is monitored through the iterations thanks to misfit cost component. 
 
 \subsubsection{Climate}
 \label{module_climate}
@@ -565,11 +570,7 @@ Surface mass balance (SMB) modules \texttt{smb\_XXX} provide a rule to update th
 \subsubsection{Ice flow}
 \label{module_iceflow}
 
-Module \texttt{iceflow} is central for both inverse and forward modelling. In the inverse model, it permits to carry the data assimilation while ensuring the consistence with the ice flow physics (Section \ref{inv_model}). In the forward model, it permits to use and retrain the emulator to update the ice flow.
-
-The inversion modelling can be activated as a preliminary step to a forward or prognostic model run that assumes isothermal ice (i.e. without additional \texttt{enthalpy} module, since the the thermal condition are inferred from the inversion rather than computed from the enthalpy module). Running this module requires that necessary observational data have been loading in IGM using an inputs module such as ice surface ice velocities ${\bf u}^{s,obs}$, the top surface elevation $s^{obs}$, some ice thickness profiles $h_p^{obs}$, observed flux divergence $d^{obs}$, glacier mask from RGI outlines. A formerly-inferred ice thickness field \citep{farinotti2019consensus,millan2022ice} can be used to initialize the inverse model. All the observational data (including individual ice thickness profiles) are rasterized on the same grid, with possible no-data (NaN) values that are ignored in the optimization. While the optimization problem is presented in its most general form (Section \ref{inv_model}), the user selects a sub-ensemble of controls and constraints within the cost function based on the availability of data. Maintaining a balance between controls and costs/constraints is crucial to maintaining the well-posedness of the problem and guarding against multiple solutions. There are a couple parameters that need adjustement including i) confidence levels (i.e. tolerance to fit the data) $\sigma^u, \sigma^h, \sigma^s, \sigma^d$ or ii) regularization weights $\alpha^h, \alpha^c, \alpha^A$. The data assimilation is monitored through the iterations thanks to misfit cost component. 
-
-The forward model relies on the ice flow emulator, which delivers ice flow field computationally efficiently. The user must first define physical parameters related to the ice flow (unless those were optimized in the data assimilation step), as well as parameters related to the vertical discretization (e.g., the number of vertical layers). Two other numerical parameters may need adjustements: i) the learning rate for the retraining of the CNN, which controls the strengh of retraining, ii) the retraining frequency, which needs to be sufficiently frequent to maintain accuracy, but not too much to mitigate computational costs. When treating large arrays, retraining must be done sequentially patch-wise for memory reason. The maximum size of patches is controlled by a parameter, which can be adpated to the size of the GPU memory. Last, it is possible to use a solver (instead of an emulator) to compute the iceflow, as well as using both the emulator and the solver (in diagnostic mode) to assess the fidelity of the iceflow emulator to the solver.
+Module \texttt{iceflow} permits to use and retrain the emulator to update the ice flow in the forward modle. The latter relies on the ice flow emulator, which delivers ice flow field computationally efficiently. The user must first define physical parameters related to the ice flow (unless those were optimized in the data assimilation step), as well as parameters related to the vertical discretization (e.g., the number of vertical layers). Two other numerical parameters may need adjustements: i) the learning rate for the retraining of the CNN, which controls the strengh of retraining, ii) the retraining frequency, which needs to be sufficiently frequent to maintain accuracy, but not too much to mitigate computational costs. When treating large arrays, retraining must be done sequentially patch-wise for memory reason. The maximum size of patches is controlled by a parameter, which can be adpated to the size of the GPU memory. Last, it is possible to use a solver (instead of an emulator) to compute the iceflow, as well as using both the emulator and the solver (in diagnostic mode) to assess the fidelity of the iceflow emulator to the solver.
 
 \subsubsection{Time}
 \label{module_time}
@@ -597,7 +598,7 @@ Module \texttt{particles} permits to seed and track the position of virtual part
 
 \subsection{Outputs modules}
 
-Outputs modules permit to monitor the results of IGM. The frequency of saving is determined by a parameter defined within the \texttt{time} module (as this time needs to be reached exactly). Modules \texttt{write\_ncdf} and \texttt{write\_tif} are responsible for writing 2D field variables that are specified in the parameter lists in ncdf or tif format files. Module \texttt{plot2d} module generates 2D plan-view plots of user-defined variables, which can be displayed in real-time or saved as image files. 
+Outputs modules permit to monitor the results of IGM. The frequency of saving is determined by a parameter defined within the \texttt{time} module (as this time needs to be reached exactly). Module \texttt{local} are responsible for writing 2D field variables that are specified in the parameter lists in NetCDF or Tif format files. Module \texttt{plot2d} module generates 2D plan-view plots of user-defined variables, which can be displayed in real-time or saved as image files. 
 
 \subsection{User modules}
 \label{user_modules}
